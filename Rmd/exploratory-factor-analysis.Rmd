@@ -1,0 +1,178 @@
+---
+title: "`r params$questionnaire` Questionnaire: Exploratory Factor Analysis on `r params$language` Data"
+date: "`r Sys.Date()`"
+params:
+  questionnaire: "FL"
+  labels: !r fl_labels
+  language: !r c("en", "fr")
+output:
+  html_document: 
+    toc: yes
+    toc_float: yes
+    df_print: kable
+    code_folding: hide
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 5
+    number_sections: yes
+    highlight: tango
+    fig_width: 12
+    fig_height: 12
+  word_document:
+    toc: yes
+    toc_depth: '5'
+header-includes: \usepackage{float} \floatplacement{figure}{H} \usepackage{longtable}
+---
+
+<center>
+![](uog-logo.jpeg){width=25%}
+</center>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = T, 
+  comment = "#>",
+  results = "hide", 
+  message = FALSE,
+  warning = FALSE,
+  tidy.opts = list(width.cutoff=60)
+  )
+
+```
+
+
+```{r setup-import}
+library(here)
+source(here("R", "helper_rmd-sources.R"))
+df <- data_path %>% 
+  read_rds %>% 
+  filter(survey_type == "survey") %>% 
+  filter(language %in% params$language)
+
+## Or for full reproducibility run
+# "main.R" %>% here() %>% source
+
+## We use hetcor for polychoric correlations
+## NB POLYCHORIC_R gives an error (first line below) 
+## It uses psych::polychoric
+## which gives the full error:
+# Error in `rownames<-`(`*tmp*`, value = colnames(x)) :
+#   attempt to set 'rownames' on an object with no dimensions
+# In addition: Warning messages:
+# 1: In polychoric(.) :
+#   The items do not have an equal number of response alternatives, global set to FALSE.
+# 2: In mclapply(seq_len(n), do_one, mc.preschedule = mc.preschedule,  :
+#   all scheduled cores encountered errors in user code
+# 3: In matpLower(x, nvar, gminx, gmaxx, gminy, gmaxy) :
+#   Something is wrong in polycor
+# 4: In cor.smooth(mat) :
+#   I am sorry, there is something seriously wrong with the correlation matrix,
+# cor.smooth failed to  smooth it because some of the eigen values are NA.
+# Are you sure you specified the data correctly?
+```
+
+# Factor Analysis {.tabset .tabset-fade .tabset-pills}
+
+## Tests for Suitability
+```{r polychoric-matrix}
+efa_df <- df %>% 
+  select(all_of(params$labels)) %>% 
+  filter(!if_any(everything(), is.na)) %>%   
+  mutate(
+    across(
+      everything(), 
+      ~ factor(.x, ordered = TRUE)
+      )
+    ) 
+
+pcor <- efa_df %>%
+  as.data.frame %>%
+  hetcor(parallel = TRUE, std.error = FALSE) %>%  
+  .[["correlations"]] %>% 
+  hush() %>%
+  suppressMessages()
+
+```
+
+```{r factor-retention-setup, results = "asis"}
+nf <- N_FACTORS_no_hull(
+  pcor, 
+  nrow(efa_df) # N observations
+  ) %>%
+  hush() %>%
+  suppressMessages()
+
+```
+### Bartlett's test
+```{r barlett, results = "asis"}
+## Bartlett's test
+nf$outputs[[1]]
+
+```
+
+### KMO criterion
+
+```{r kmo, results = "asis"}
+## KMO criterion
+nf$outputs[[2]]
+
+```
+
+
+## Factor Retention {.tabset .tabset-fade}
+
+### Number of Factors by Method
+```{r factor-retention-nfac, results = "asis"}
+
+nfac <- nf$n_factors
+
+tibble(
+  Method = str_replace(names(nfac), "nfac_", ""),
+  Factors = nfac
+) %>% 
+  filter(!is.na(Factors)) %>%
+  arrange(Factors)
+
+```
+
+### Plots
+```{r factor-retention-plots, results = "asis", error = TRUE}
+nf$outputs[-c(1:2)]
+
+```
+
+```{r}
+# n_factors <- switch(params$questionnaire,
+#   "CRITICAL" = c(2, 3),
+#   "FUNCTIONAL" = c(2), # 0 and 1 cannot be used 
+#   "INTERACTIVE" = c(3, 4, 5, 6, 7),
+#   "FL" = c(8, 9, 10, 11),
+#   "HTE" = c(2, 3, 4, 8),
+#   stop("Invalid `questionnaire` value")
+# )
+
+n_factors <- min(nfac, na.rm = TRUE):
+  max(nfac, na.rm = TRUE) %>% 
+  .[!. %in% c(0, 1)] # 0 and 1 cannot be used
+
+```
+
+
+```{r, echo = FALSE, results = 'asis'}
+options(knitr.duplicate.label = "allow")
+
+res <- lapply(
+  n_factors, 
+  function(x) {
+    knitr::knit_child(
+      "factor-extraction.Rmd",
+      envir = environment(), 
+      quiet = TRUE
+    )
+    }
+  )
+
+cat(unlist(res), sep = '\n')
+```
+

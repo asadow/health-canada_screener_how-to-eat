@@ -1,0 +1,178 @@
+---
+title: "HEFI and HTE"
+date: "`r Sys.Date()`"
+params:
+  questionnaire: "HTE"
+  labels: !r hte_labels
+  by: "language"
+output:
+  html_document: 
+    toc: yes
+    toc_float: yes
+    df_print: kable
+    code_folding: hide
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 5
+    number_sections: yes
+    highlight: tango
+    fig_width: 12
+    fig_height: 12
+  word_document:
+    toc: yes
+    toc_depth: '5'
+header-includes: \usepackage{float} \floatplacement{figure}{H} \usepackage{longtable}
+---
+
+<center>
+![](uog-logo.jpeg){width=25%}
+</center>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = T, 
+  comment = "#>",
+  results = "hide", 
+  message = FALSE,
+  warning = FALSE,
+  tidy.opts = list(width.cutoff=60)
+  )
+
+```
+
+```{r setup-import}
+library(here)
+source(here("R", "helper_rmd-sources.R"))
+df <- data_path %>% 
+  read_rds %>% 
+  filter(survey_type == "survey")
+```
+
+```{r extra-import-and-wrangle}
+## Need ASA24 id's
+ids <- here("data", "all-ids.csv") %>% 
+  read_csv %>% 
+  clean_names
+
+df <- df %>% left_join(ids, by = "response_id")
+
+asa <- here("data", "asa24-totals-and-hefi-scores.csv") %>%
+  read_csv %>% 
+  clean_names
+
+```
+
+
+```{r}
+## Using means of 2 HEFI's
+hefi_means <- asa %>%
+  group_by(asa24id) %>% 
+  summarize(HEFI_mean = mean(hefi2019_total_score)) 
+
+## Using the HEFI-2019 score from the first ASA24 (versus averaging across the two HEFI-2019 scores) to help increase our sample
+## 4 do not have 1st ASA
+hefi_single <- asa %>%
+  add_count(asa24id) %>% 
+  filter(recall_no == 1 | n == 1) %>% 
+  rename(HEFI = hefi2019_total_score)
+
+hefi <- hefi_means %>% full_join(hefi_single, by = "asa24id")
+
+df <- df %>% left_join(hefi, by = "asa24id")
+
+```
+
+## Sample Sizes
+```{r results = "asis"}
+
+df %>% 
+  group_by(language) %>% 
+  summarize(
+    n_HEFI = sum(!is.na(HEFI)),
+    n_HEFI_mean = sum(!is.na(HEFI_mean))
+  ) %>% 
+  kbl() %>% 
+  kable_styling(full_width = FALSE)
+
+
+
+```
+
+```{r nested-data}
+db <- df %>% 
+  data_by(
+    c("HEFI", glue("{params$questionnaire}_score"), params$labels), 
+    params$by
+    )
+
+lvls <- db %>% pull(params$by)
+```
+
+# HEFI and HTE Correlations
+
+```{r hefi-corr}
+
+results <- db %>% 
+  mutate(
+    hefi_corr = map(
+      data, 
+      ~ hefi_corr(.x, HEFI, params$questionnaire, params$labels)
+      )
+  )
+
+```
+
+<div style = "width:50%; height:auto; margin: auto;">
+
+```{r hefi-corr-dt, results = "asis"}
+
+results %>%
+  select(-data) %>% 
+  unnest(hefi_corr) %>% 
+  pivot_wider(
+    names_from = params$by,
+    values_from = HEFI
+    ) %>% 
+  hefi_dt
+
+```
+
+</div>
+
+
+# HEFI Quartiles and HTE Means
+
+```{r hefi-quartile}
+
+results <- results %>% 
+  mutate(
+    hefi_quartiles = map(
+      data, 
+      ~ .x %>% 
+        summarize_tiles(4, "quartile", HEFI, params$questionnaire)
+    )
+  )
+
+```
+<div style = "width:50%; height:auto; margin: auto;">
+
+```{r hefi-quartile-dt, results = "asis"}
+results %>% 
+  select(params$by, hefi_quartiles) %>% 
+  unnest(hefi_quartiles)  %>% 
+  mutate(
+    across(
+      where(is.numeric),
+      ~ round(.x, 1) %>% as.character
+    ),
+    across(
+      everything(),
+      ~ case_when(is.na(.x) ~ "Missing", TRUE ~ .x)
+    )
+  ) %>% 
+  hefi_dt
+
+```
+
+</div>

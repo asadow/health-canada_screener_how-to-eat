@@ -1,0 +1,110 @@
+---
+title: "Confirmatory Factor Analysis for Food Literacy"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 1
+    code_folding: hide
+    code_download: true
+---
+
+Last updated: `r format(Sys.Date(), "%B %d %Y")`
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(error = TRUE, message = FALSE, warning = TRUE,
+                      fig.width = 6, fig.asp = 0.618, out.width = "70%",
+                      fig.align = "center")
+
+library(readr)
+library(here)
+library(dplyr)
+library(lavaan)
+library(psych)
+library(semoutput)
+library(semPlot)
+library(sjPlot)
+```
+
+```{r}
+##NB 
+## Two items means a covariance matrix of 4 values
+## 3 of which are unique since
+## K(K+1)/2 = number of unique elements
+## Each factor needs at least 3 items
+## 3 items results in a saturated model 
+## where the number of free parameters equals 
+## the number of elements in the variance-covariance matrix
+## A saturated model cannot be evaluated for model fit
+
+```
+
+```{r}
+library(here)
+source(here("R", "helper_rmd-sources.R"))
+library(lavaan)
+library(semoutput)
+
+## Read data and discard re-test
+df <- data_path %>% 
+  read_rds %>% 
+  filter(survey_type == "survey")
+
+factors_and_items <- cd %>%
+  rename(group = fl_dimension,
+         label = labels) %>%
+  filter(
+    group %in% c("Nutrition",
+                 "Agri-Food Systems",
+                 "Cultural"
+                 # 3-item
+                 , "Eco"
+                 # 2-item
+                 , "Food Media", 
+                 "Civics") &
+      !label %in% c("agri_exp", "IC_WNsafe") ## removed from analysis
+  ) %>%
+  select(group, label)
+
+fl_factors_1 <- factors_and_items %>%
+  filter(group %in% c("Agri-Food Systems", "Cultural"))
+
+fl_factors_2 <- factors_and_items %>%
+  mutate(
+    group = case_when(
+      group != "Nutrition" ~ "Combined",
+      TRUE ~ group)
+  )
+
+# lavInspect(cfa, "cov.lv")
+
+```
+
+
+```{r knit-child, results = 'asis'}
+options(knitr.duplicate.label = "allow")
+
+res <- lapply(
+  list(fl_factors_1, fl_factors_2, factors_and_items), 
+  function(x) {
+    knitr::knit_child(
+      "cfa-child.Rmd",
+      envir = environment(), 
+      quiet = TRUE
+    )
+    }
+  )
+
+cat(unlist(res), sep = '\n')
+```
+
+
+
+<!-- # Session Info -->
+
+<!-- ```{r comment=""} -->
+<!-- citation("lavaan") -->
+<!-- citation() -->
+<!-- sessionInfo() -->
+<!-- ``` -->

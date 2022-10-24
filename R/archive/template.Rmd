@@ -1,0 +1,10 @@
+---
+title: "template"
+output: html_document
+---
+
+# Regression on {{i}}
+
+```{r lm-{{i}}}
+lm(mpg ~ {{i}}, data = mtcars)
+```

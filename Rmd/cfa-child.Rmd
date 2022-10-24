@@ -1,0 +1,102 @@
+---
+title: "cfa-child"
+output: html_document
+date: "2022-09-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+```{r}
+factors <- x$group %>% unique
+```
+
+
+# CFA for Factors `r glue_collapse(factors, sep = ", ", last = " and ")`{.tabset .tabset-pills}
+
+## Descriptives
+
+```{r}
+vars <- x$label
+data <- df %>% select(all_of(vars))
+cfa_model <- x %>% specify_cfa
+cfa <- cfa(cfa_model, data = df)
+```
+
+```{r}
+# Prints basic descriptive statistics
+sem_descriptives(data)
+```
+
+## Correlation Matrix
+
+```{r}
+# Uses sjPlot to print a nice looking correlation table
+tab_corr(data, na.deletion = "pairwise", digits = 2, triangle = "lower")
+```
+
+## Summary Output
+
+
+```{r}
+fit <- cfa
+# # fit the model
+# fit <- cfa(model = model, data = data, mimic = "lavaan", 
+#            estimator = "ML", missing = "ML", 
+#            std.lv = TRUE, std.ov = FALSE, test = "standard", 
+#            se = "standard", bootstrap = 1000)
+```
+
+```{r results='asis'}
+sem_tables(fit)
+
+contains_nutrition <- any(x$group %in% "Nutrition")
+```
+
+
+`r if (!contains_nutrition) '## Diagram Output'`
+
+```{r eval = !contains_nutrition}
+
+factors <- fit@pta$vnames$lv[[1]]
+semPaths(fit, latents = factors, whatLabels = "std", layout = "tree2", 
+         rotation = 2, style = "lisrel", optimizeLatRes = TRUE, 
+         intercepts = FALSE, residuals = TRUE, curve = 1, curvature = 3, 
+         sizeLat = 10, nCharNodes = 8, sizeMan = 11, sizeMan2 = 4, 
+         edge.label.cex = 1.2, edge.color = "#000000")
+```
+
+## Residual Correlation Matrix
+
+```{r}
+sem_residuals(fit)
+```
+
+## Full Output
+
+### Summary
+
+```{r}
+summary(fit, fit.measures = TRUE, standardized = TRUE)
+```
+
+### Parameter Estimates
+
+```{r}
+standardizedSolution(fit)
+```
+
+### Modification Indices
+
+```{r}
+modificationIndices(fit, sort. = TRUE, minimum.value = 3)
+```
+
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------

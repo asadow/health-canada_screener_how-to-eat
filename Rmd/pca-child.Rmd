@@ -1,0 +1,178 @@
+---
+title: "pca-child"
+output: html_document
+date: '2022-08-03'
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## `r x` {.tabset .tabset-fade}
+
+```{r select-items-using-category}
+## Prepare data
+
+pca_cat <- pca_cats %>% filter(group == x)
+
+group_values_wide <- df %>% 
+  select(all_of(pca_cat$label)) %>% 
+  ## Remove cases with missing data
+  filter(!if_any(everything(), is.na))
+
+# group_values_long <- group_values_wide %>% pivot_longer(everything())
+
+```
+
+```{r pca}
+pca_result <- prcomp(group_values_wide, scale. = TRUE)
+
+## eigenvectors (AKA principal component loading vectors)
+## a rotation matrix is a transformation matrix 
+## that is used to perform a rotation in Euclidean space
+eigenvectors <- pca_result$rotation 
+# variables <- eigenvectors %>% rownames
+
+eigenvectors_long <- bind_cols(name = eigenvectors %>% rownames, 
+                               eigenvectors) %>%
+  pivot_longer(cols = - name,
+               names_to = "PC",
+               values_to = "Contribution")
+```
+
+
+```{r pve}
+## eigenvalues (AKA proportions of variance explained 
+## by each principal component) 
+## are obtained by squaring the standard deviation of each principal component
+ve <- pca_result$sdev^2
+pve <- ve / sum(ve)
+
+pve <- tibble(
+  pve, 
+  pc = c(1:length(pve))
+  ) %>% 
+  mutate(pve_cum = cumsum(pve))
+
+eigenvalues <- tibble(
+  eigenvalue = ve, 
+  pc = c(1:length(ve))
+  )
+
+```
+
+```{r plots}
+scree <- scree_plot(pve, pc, y = pve)
+scree_cum <- scree_plot(pve, pc, y = pve_cum, cumulative = TRUE)
+
+scree_eigen <- eigenvalues %>% 
+    ggplot(aes(x = pc,
+                y = eigenvalue, 
+                label = round(eigenvalue, 2))) + 
+    geom_point() +
+    geom_line() + 
+    xlab("Principal Component") + 
+    ylab(NULL) + 
+    ggtitle(glue("Scree Plot of Eigenvalues")) +
+    ggrepel::geom_text_repel(nudge_y = 0,
+                             nudge_x = 0,
+                             segment.size = 0)
+
+```
+
+### Scree Plots and Proportions of Variance Explained
+
+```{r}
+many_items_in_x <- x %in% groups_of_many_items
+```
+
+```{r show-plots-large-scree, eval = many_items_in_x, fig.width = 12, fig.asp = 0.35}
+scree
+```
+
+```{r show-plots-large-scree-cum, eval = many_items_in_x, fig.width = 12, fig.asp = 0.35}
+scree_cum
+```
+
+```{r show-plots-large-scree, fig.width = 12, fig.asp = 0.35}
+scree_eigen
+```
+
+```{r show-plots, eval = !many_items_in_x}
+grid.arrange(scree, scree_cum, ncol = 2)
+```
+
+### Loadings {.tabset .tabset-fade}
+
+#### Table
+```{r results = "asis"}
+eigenvectors_long %>% 
+  mutate(PC = PC %>% str_extract_all("\\d")) %>% 
+  arrange(PC, Contribution) %>% 
+  mutate(
+    Contribution = round(Contribution, 2)
+  ) %>%
+  reactable(
+    groupBy = c("PC"),
+    onClick = "expand",
+    highlight = TRUE,
+    compact = TRUE,
+    bordered = TRUE,
+    defaultColDef = colDef(
+      align = "center",
+      minWidth = 70,
+      headerStyle = list(background = "#f7f7f8")
+    ),
+    rowStyle = function(index) {
+      if (.[index, "Contribution"] > 0.1) {
+        color <- "#008000"
+      } else if (.[index, "Contribution"] < - 0.1) {
+        color <- "#e00000"
+      } else {
+        color <- "#777"
+      }
+      list(color = color, fontWeight = "bold")
+    },
+    
+    columns = list(
+
+      PC = colDef(
+        style = list(color = "#777", fontWeight = "bold")
+      )
+    )
+  )
+```
+
+#### Plot
+```{r loadings}
+
+eigenvectors_long <- if(many_items_in_x){
+  eigenvectors_long %>% filter(PC %>% str_extract("\\d+") %in% 1:4)
+}else{eigenvectors_long}
+
+eigenvectors_long %>% 
+  ggplot(aes(x = name, y = Contribution, fill = name)) +
+  geom_col(show.legend = TRUE, alpha = 0.8) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(y = NULL) +
+  facet_wrap(~ PC, ncol = 2) + 
+  labs(fill = "Item") 
+
+```
+
+### Interpretation
+
+`r interpretation %>% filter(group == x) %>% pull("text")`
+
+
+<!-- ## Bi-plot -->
+
+<!-- ```{r} -->
+<!-- biplot(pca_result, scale = 0) -->
+
+<!-- ``` -->
+

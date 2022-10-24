@@ -1,0 +1,119 @@
+---
+title: "Principal Component Analysis"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    toc: yes
+    toc_float: yes
+    df_print: kable
+    code_folding: hide
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 5
+    number_sections: yes
+    highlight: tango
+    fig_width: 12
+    fig_height: 12
+  word_document:
+    toc: yes
+    toc_depth: '5'
+header-includes: \usepackage{float} \floatplacement{figure}{H} \usepackage{longtable}
+---
+
+<center>
+![](uog-logo.jpeg){width=25%}
+</center>
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+  echo = T, 
+  comment = "#>",
+  results = "hide", 
+  message = FALSE,
+  warning = FALSE,
+  tidy.opts = list(width.cutoff=60)
+  )
+
+```
+
+```{r setup-pca}
+library(here)
+source(here("R", "helper_rmd-sources.R"))
+
+## Read data and discard re-test
+df <- data_path %>% 
+  read_rds %>% 
+  filter(survey_type == "survey")
+
+pca_cats <- get_pca_cats(cd)
+
+groups_of_many_items <- pca_cats %>% 
+  group_by(group) %>% 
+  add_count %>% 
+  filter(n >= 10) %>% 
+  pull(group) %>% 
+  unique
+
+group <- pca_cats$group %>% unique
+
+```
+
+```{r interpretation}
+interpretation <- tibble(group = group) %>% pca_interpretation
+
+```
+
+# Pre-Analysis {.tabset .tabset-fade}
+
+## KMO {.tabset .tabset-fade}
+```{r}
+## polychoric correlations between ordinal variables
+correlations_hte <- df %>% prepare_and_hetcor(hte_labels)
+correlations_fl <- df %>% prepare_and_hetcor(fl_labels)
+
+kmo_hte <- EFAtools::KMO(correlations_hte) %>% .[["KMO"]] %>% round(2)
+kmo_fl <- EFAtools::KMO(correlations_fl) %>% .[["KMO"]] %>% round(2)
+
+```
+
+### HTE
+
+The KMO is `r kmo_hte`.
+
+### FL
+
+The KMO is `r kmo_fl`.
+
+# Analyses on Item Groups {.tabset .tabset-fade}
+
+```{r knit-child, results = 'asis'}
+options(knitr.duplicate.label = "allow")
+
+res <- lapply(
+  group, 
+  function(x) {
+    knitr::knit_child(
+      "pca-child.Rmd",
+      envir = environment(), 
+      quiet = TRUE
+    )
+    }
+  )
+
+cat(unlist(res), sep = '\n')
+```
+
+# Appendix {.tabset .tabset-fade}
+<!-- ## Theory -->
+
+<!-- The principal component analysis (PCA) involves rotating a cloud of data points in Euclidean space such that the variance is maximal along the first axis, the so-called first principal component. The principal axis theorem ensures that the data can be rotated in such away. A principal axis is a line in a Euclidean space associated with an ellipsoid or hyperboloid, generalizing the major and minor axes of an ellipse or hyperbola. The principal axis theorem states that the principal axes are perpendicular, and gives a constructive procedure for finding them. -->
+
+```{r legend, echo = FALSE, results='asis'}
+res <- knitr::knit_child('item-legend.Rmd', quiet = TRUE)
+cat(res, sep = '\n')
+```
+
+
+

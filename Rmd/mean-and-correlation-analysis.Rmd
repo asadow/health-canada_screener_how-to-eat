@@ -1,0 +1,243 @@
+---
+title: "`r params$questionnaire` Questionnaire Report: Statistics by `r snakecase::to_title_case(params$by)`"
+date: "`r Sys.Date()`"
+params:
+  questionnaire: "HTE_SUBSET_10"
+  labels: !r hte_subset_10_labels
+  by: "age_group"
+output:
+  html_document: 
+    toc: yes
+    toc_float: yes
+    df_print: kable
+    code_folding: hide
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 5
+    number_sections: yes
+    highlight: tango
+    fig_width: 12
+    fig_height: 12
+  word_document:
+    toc: yes
+    toc_depth: '5'
+header-includes: \usepackage{float} \floatplacement{figure}{H} \usepackage{longtable}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = T, 
+  comment = "#>",
+  results = "hide", 
+  message = FALSE,
+  warning = FALSE,
+  tidy.opts = list(width.cutoff=60)
+  )
+```
+
+<center>
+![](uog-logo.jpeg){width=25%}
+</center>
+
+```{r setup-import}
+library(here)
+source(here("R", "helper_rmd-sources.R"))
+
+df <- data_path %>% 
+  read_rds %>% 
+  filter(survey_type == "survey")
+
+## Or for full reproducibility run
+# "main.R" %>% here() %>% source
+```
+
+# Sections by `r to_title_case(params$by)` {.tabset .tabset-fade .tabset-pills}
+
+## Demographics
+
+```{r demo-table, results = "asis"}
+demo_by(df, params$by)
+```
+
+## Item Stats {.tabset .tabset-fade .tabset-pills}
+
+```{r cols-summary-by-group, results = "asis"}
+
+df %>% summ_by(params$questionnaire, 
+               params$labels, 
+               params$by)
+
+```
+
+## Correlation and Reliability {.tabset .tabset-fade .tabset-pills}
+
+```{r cols-correlations-by-group}
+df_by_param <- df %>% 
+  data_by(params$labels, params$by) %>% 
+  ## Remove rows where by variable is missig
+  ## as alpha cannot be computed for such a small sample
+  filter(!is.na(!!sym(params$by)))
+
+df_by_param <- df_by_param %>% 
+  mutate(
+    data = map(data, ~ .x %>% select(order(colnames(.))))
+  )
+## Note these lines only work when knitting as eval_psych(.x)[[3]] has the correct index for the warning of alpha when knitting but for a script we need eval_psych(.x)[[2]]
+
+results <- df_by_param %>%
+  add_corr %>% 
+  add_warning_alpha
+
+results <- results %>% 
+  add_alpha(data) %>%
+  add_alpha(data_subset) # does not work on data subset of 1 variable
+
+```
+
+### Matrices {.tabset .tabset-fade}
+
+```{r cols-corr-plots-and-matrices}
+ms <- results %>%
+  select(params$by, cmatrix) %>%
+  mutate(cmatrix = map(cmatrix, ~.x %>% corr_dt)) %>% 
+  pull(cmatrix)
+
+lvls <- results %>% pull(params$by)
+
+```
+
+#### `r lvls[1]`
+```{r corr-matrices-1, results = "asis"}
+ms[[1]]
+```
+
+#### `r lvls[2]`
+```{r corr-matrices-2, results = "asis"}
+ms[[2]]
+```
+
+#### `r lvls[3]`
+```{r corr-matrices-3, results = "asis"}
+ms[[3]]
+```
+
+#### `r lvls[4]`
+```{r corr-matrices-4, results = "asis", eval = length(ms) == 4}
+ms[[4]]
+```
+
+<!-- ## This code will not work when render is called -->
+
+<!-- ```{r, results='asis'} -->
+<!-- ## NB -->
+<!-- ## datatable nor reactable will -->
+<!-- ## work in a loop like below -->
+<!-- ## This is a known issue -->
+<!-- ## Unfortunately kableExtra still has no fixed row name -->
+
+<!-- n_results <- nrow(results) -->
+
+<!-- for (i in seq(n_results)) { -->
+<!--   # Inserts "##### Dynamic Title" -->
+<!--   pander::pandoc.header( -->
+<!--     results[[params$by]][i], -->
+<!--     level = 4) -->
+
+<!--   # Section contents -->
+
+<!--   results$corr_matrix[[i]] %>% -->
+<!--     kbl() %>% -->
+<!--     kable_styling(fixed_thead = T) %>% -->
+<!--     print -->
+
+<!--   # a list, formatted as Markdown -->
+<!--   # adding empty lines for valid Markdown -->
+<!--   pander::pandoc.p('') -->
+<!--   pander::pandoc.p('') -->
+<!-- } -->
+
+<!-- ``` -->
+
+### alpha {.tabset .tabset-fade}
+
+#### Cronbach's alpha warnings
+
+The below table shows whether an analysis of Cronbach's alpha produced a warning regarding the use of certain items. N/A represents no such items.
+
+
+```{r alpha-warning-items-dup, results = "asis"}
+
+wi <- map(
+    results$warning_items, 
+    ~ glue_collapse(., sep = ", ", last = ", and ")
+    )
+
+wi[map_lgl(wi, is_empty)] <- "N/A"
+
+tibble(
+  Analysis = results %>% pull(params$by),
+  "Warning Items" = wi %>% unlist
+) %>% 
+  kbl() %>% 
+  kable_styling(full_width = FALSE)
+
+
+results_long <- results %>% 
+  pivot_longer(
+    matches(".(data|data_subset)$"),
+    names_to = c(".value", "set"),
+    names_pattern = "(.*)_of_(.*)"
+    ) %>% 
+  mutate(
+    set = recode(
+      set, 
+      "data" = "all items", 
+      "data_subset" = "all but warning items")
+    )
+```
+
+
+This is the warning from R function psych::alpha(): 
+
+> Some items were negatively correlated with the total scale and probably should be reversed.
+
+#### alpha
+
+```{r alpha, results = "asis"}
+results_long %>% 
+  pw_nv(params$by, alpha) %>% 
+  corr_dt
+```
+
+#### alpha When Dropping Items
+
+```{r alpha-drop, results = "asis"}
+results_long %>% 
+  pw_nv(params$by, dropped_alpha) %>% 
+    arrange(desc(set), item) %>% 
+    corr_dt
+
+```
+
+
+### Correlations Between Items and Total {.tabset .tabset-fade}
+
+#### Item-Total Correlations
+```{r itcorr, results = "asis"}
+results_long %>% 
+  pw_nv(params$by, itc) %>% 
+    arrange(desc(set), item) %>% 
+    corr_dt
+
+```
+
+#### Item-Total Correlations (Corrected)
+
+```{r itcorrC, results = "asis"}
+results_long %>% 
+  pw_nv(params$by, itcc) %>% 
+    arrange(desc(set), item) %>% 
+    corr_dt
+
+```

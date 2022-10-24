@@ -1,0 +1,532 @@
+---
+title: "Health Canada Screener Development Report"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: kable
+    code_folding: hide
+  pdf_document: 
+    latex_engine: xelatex
+    toc: true
+    toc_depth: 5
+    number_sections: true
+    highlight: tango
+    fig_width: 12
+    fig_height: 12
+header-includes:
+   \usepackage{float}
+    \floatplacement{figure}{H}
+    \usepackage{longtable}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message= F, warning = F, comment=NA, results = "hide", tidy.opts=list(width.cutoff=60), tidy=TRUE)
+```
+
+
+# R Code (hidden)  {.tabset .tabset-fade .tabset-pills}
+
+## Libraries and Functions {.tabset .tabset-fade .tabset-pills}
+
+
+```{r}
+## Packages ####
+
+source(here("R/00_packages.R"))
+
+## Functions####
+
+source(here("R/00_functions.R"))
+```
+
+
+## Data Reading and Preparation {.tabset .tabset-fade .tabset-pills}
+
+```{r}
+source(here("R/01_marshal-data.R"))
+
+```
+
+## Demographics
+
+```{r}
+source(here("R/02_demographics.R"))
+
+```
+
+
+## Scoring {.tabset .tabset-fade .tabset-pills}
+
+
+```{r}
+
+source(here("R/02_scoring.R"))
+
+```
+
+### Items to Reverse: 
+
+```{r results = "asis"}
+to_reverse
+
+```
+
+
+
+# How To Eat (HTE) Item Legend {.tabset .tabset-fade .tabset-pills}
+
+```{r results = "asis"}
+inum <- tibble("#" = seq(hte_cols), Item = hte_cols)
+
+datatable(
+  inum, 
+  rownames = F, 
+  options = list(
+    columnDefs = list(
+      list(
+        width = '2px',
+        targets = 0
+        )
+      ),
+    scrollY = 500,
+    scroller = TRUE
+    )
+  )
+
+```
+
+# Statistics {.tabset .tabset-fade .tabset-pills}
+
+## Descriptive {.tabset .tabset-fade .tabset-pills}
+
+### Mean, SD, Range
+```{r}
+scores <- str_subset(names(df), "^score")
+
+numerics <- c(
+  scores,
+  glue("hte_{1:21}")
+  # ,
+  # nutrition,
+  # media,
+  # cultural,
+  # civic,
+  # str_subset(
+  #   names(df), 
+  #   "look.*food_labels|aware.*in_season|avoid.*plastic"
+  #   )
+)
+
+summary <- df %>% 
+  summ
+
+summary_l <- df %>% 
+  group_by(language) %>% 
+  summ
+
+sump <- summary %>% 
+  pivot_longer(
+    cols = everything(),
+    names_to = c("i", "s"),
+    names_pattern = c("(.*)_(.*)"),
+    values_to = "total"
+  )
+
+sump_l <- summary_l %>% 
+  pivot_longer(
+    cols = - language,
+    names_to = c("i", "s"),
+    names_pattern = c("(.*)_(.*)"),
+    values_to = "Value"
+  ) %>% 
+  pivot_wider(
+    names_from = language,
+    values_from = Value
+  ) %>% 
+  mutate(
+    en_minus_fr = en - fr
+  )
+
+sump <- sump %>% full_join(sump_l, by = c("i", "s"))
+```
+
+```{r results = "asis"}
+datatable(
+    sump %>% categorize,
+    extensions = c(
+      "Select",
+      'SearchPanes',
+      "Buttons"
+      ),
+    selection = 'none',
+    options = list(
+      dom = 'PBtip',
+      columnDefs = list(
+        list(width = '100px', targets = 0),
+        list(width = '500px', targets = 1),
+        list(width = '70px', targets = 2),
+        list(width = '20px', targets = 3),
+        list(searchPanes = list(show = FALSE), targets = 1:ncol(sump)),
+        list(searchPanes = list(controls = FALSE), targets = 0:1)
+        ),
+      scrollY = 300,
+      pageLength = 5,
+      scroller = TRUE,
+      buttons = 'csv'
+      ),
+    rownames = F,
+    class = 'cell-border stripe'
+  )
+
+```
+
+### Frequencies
+
+```{r}
+# Only for specific variables
+
+inter <- c("I know how to", "Over the past year, I have")
+inter <- paste0(inter, ": (check all that apply)")
+conf <- str_subset(names(df), "^Confidence")
+eat_culture <- c(
+  "I eat foods that are part of my family food traditions and/or culture.",
+  "I eat foods from a variety of cultures and/or food traditions."
+)
+rankf <- str_subset(names(df), "rank.*factors.*food")
+e <- str_subset(names(df), "The best before|If there is a food")
+
+lit <- list(
+  "Interactive Literacy" = inter,
+  "Interactive Literacy - Rank" = rankf,
+  "Cultural Literacy" = eat_culture,
+  "Eco Literacy" = e
+)
+
+freq_dfs <- imap(
+  lit,
+  function(x, y) map(
+    x,
+    ~ option_freq(df, .x) %>% 
+      mutate(
+        Category = y, 
+        Column = str_replace(Column, ".*- ",  "Rank: ")
+        ) %>% 
+      select(Category, everything())
+  )
+)
+
+freq_df <- bind_rows(freq_dfs) %>% 
+     mutate(
+       across(
+         where(is.character), 
+         ~ as.factor(.x)
+         )
+       )
+
+```
+
+
+```{r results = "asis"}
+datatable(
+    freq_df,
+    extensions = c(
+      "Select",
+      'SearchPanes',
+      "Buttons"
+      ),
+    selection = 'none',
+    options = list(
+      dom = 'PBtip',
+      columnDefs = list(
+        list(width = '200px', targets = 0),
+        list(width = '300px', targets = 1),
+        list(width = '200px', targets = 2),
+        list(width = '20px', targets = 3:4),
+        list(searchPanes = list(show = FALSE), targets = 2:4),
+        list(searchPanes = list(controls = FALSE), targets = 0:1)
+        ),
+      scrollY = 300,
+      scroller = TRUE,
+      buttons = "csv"
+      ),
+    rownames = F,
+    class = 'cell-border stripe'
+  )
+```
+
+
+## Correlations  {.tabset .tabset-fade}
+
+### By abbreviated item
+```{r}
+library(corrr)
+
+X <- 8
+
+hte <- df %>% 
+  select(score_HTE, all_of(hte_cols)) 
+
+# Rename items to only the first X words 
+
+items_named <- hte %>% 
+  rename_with(
+    ~ str_extract(
+      .x, # regex for 'word then space or any character' X times, and one last word
+      paste0("^(\\S+(\\s+|\\.)){1,", X, "}\\S+")
+      ),
+    all_of(hte_cols)
+  ) 
+
+# append "..." to items with greater than X words
+
+items_named <- items_named %>% 
+  rename_with(
+    ~ paste0(
+        str_replace(.x, "\\.", ""),
+        "..."
+    ),
+    all_of(
+      names(items_named) %>% .[str_count(., "\\S+") > X] 
+      )
+  )
+
+dn <- corr_round(items_named)
+
+```
+
+```{r results = "asis"}
+
+datatable(
+    dn,
+    extensions = 'FixedColumns',
+    options = list(
+      dom = 'frtip',
+      scrollX = TRUE,
+      fixedColumns = TRUE,
+      scrollY = 300,
+      scroller = TRUE
+      ),
+    rownames = F
+  )
+```
+
+
+
+### By item number
+
+T is score_HTE.
+
+```{r results = "asis"}
+items <- hte %>%
+  select(- score_HTE) %>% 
+  rename_with(
+    ~ which(hte_cols == .x)
+  ) %>% 
+  bind_cols(hte %>% select(score_HTE)) %>% 
+  rename(T = score_HTE) %>% 
+  select(T, everything())
+
+
+d <- corr_round(items)
+
+datatable(
+    d,
+    extensions = 'FixedColumns',
+    options = list(
+      dom = 'frtip',
+      scrollX = TRUE,
+      fixedColumns = TRUE,
+      scrollY = 300,
+      scroller = TRUE
+      ),
+    rownames = F
+  )
+```
+
+### Overview
+
+#### Plot of Correlation Matrix Values
+
+```{r results = "asis"}
+items %>% 
+  correlate() %>% 
+  shave() %>%
+  rplot()
+```
+
+
+#### Mean Correlation of Each Item
+
+```{r results = "asis"}
+m <- dn %>% 
+  select(- term) %>% 
+  map_dbl(
+    ~ mean(., na.rm = TRUE)
+    ) %>% 
+  round(2)
+
+m <- tibble(Item = names(m), "Mean Correlation" = m)
+
+datatable(
+    m,
+    options = list(
+      dom = 'frtip',
+      scrollX = TRUE,
+      scrollY = 500,
+      scroller = TRUE
+      ),
+    rownames = F
+  )
+```
+
+
+```{r}
+
+# Remove total score before calculating alpha
+items <- items %>% select(- T)
+
+items_named <- items_named %>% select(- score_HTE)
+```
+
+## Warnings When Calculating alpha
+
+R psych::alpha() outputs a warning:
+
+```{r results = "asis"}
+warning(psych::alpha(items_named))
+
+```
+
+For an overview of negative correlations, see the following table. Pink is brighter for the more negative correlations that the warning items have with other items. The rows only include other items that have a negative correlation stronger than -.15 with the warning items. 
+
+```{r results = "asis"}
+negative <- c("I eat slowly.", "I cook meals with others.", "I plan meals with others.")
+
+focused <- dn %>% 
+  focus(
+    all_of(
+      negative
+    )
+  ) 
+
+ramp <- colorRampPalette(c("pink", "light blue"))
+brks <- seq(-0.25, 0.25, 0.05) 
+clrs <- ramp(length(brks)+1)
+
+datatable(
+  focused,
+  options = list(
+    dom = 'frtip',
+    scrollY = 300,
+    scroller = TRUE
+    ),
+  rownames = F
+  ) %>% 
+  formatStyle(
+    names(focused), 
+    backgroundColor = styleInterval(brks, clrs)
+    )
+```
+
+## alpha and Item-Total (IT) Correlations (Following Removal of Items Negatively Correlated With the Total Score)
+
+```{r}
+# items_named <- items_named %>% 
+#   filter(
+#     !()
+#   )
+df_alpha <- psych::alpha(items_named)
+
+dfs <- prep_a(df_alpha)
+
+alpha <- dfs[[1]]$`Cronbach's alpha`
+```
+
+Cronbach's alpha is `r alpha`.
+
+```{r results = "asis"}
+
+# NB Cannot store these in a list and show, unless using tagList() which messes up subsequent headers
+dt(dfs[[2]], 0, 1)
+dt(dfs[[3]], 0, 1:2)
+
+```
+
+<!-- ## alpha and IT Correlations (Following Removal of Items Where alpha_if_dropped > alpha in Previous Tab) -->
+
+<!-- These items have alpha_if_dropped > alpha:  -->
+
+
+<!-- ```{r results = "asis"} -->
+<!-- df_alpha$alpha.drop %>%  -->
+<!--   filter( -->
+<!--     raw_alpha > df_alpha$total$raw_alpha -->
+<!--   ) %>%  -->
+<!--   rownames() -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- items_keep <- df_alpha$alpha.drop %>%  -->
+<!--   filter( -->
+<!--     !raw_alpha > df_alpha$total$raw_alpha -->
+<!--   ) %>%  -->
+<!--   rownames() -->
+
+<!-- items_keep_df <- items_named %>%  -->
+<!--   select( -->
+<!--     all_of(items_keep) -->
+<!--   ) -->
+
+<!-- df_alpha <- psych::alpha(items_keep_df) -->
+
+<!-- dfs <- prep_a(df_alpha) -->
+
+<!-- alpha <- dfs[[1]]$`Cronbach's alpha` -->
+<!-- ``` -->
+
+<!-- Cronbach's alpha is `r alpha`. -->
+
+<!-- ```{r results = "asis"} -->
+
+<!-- dt(dfs[[2]], 0, 1) -->
+<!-- dt(dfs[[3]], 0, 1:2) -->
+
+<!-- ``` -->
+
+# Theory {.tabset .tabset-fade .tabset-pills}
+
+## Definitions
+
+- True test score: Expectation of test score; error-free.
+- Parallel tests: Independent repetitions of the same test. In general the test scores will not be equal due to random measurement error.
+- Reliability (3 Ways to Describe): 
+   + Pearson's correlation between parallel test scores.
+   + The ratio of true score and test score variances.
+   + 1 minus the ratio of error and test score variances.
+- Essential Tau (Test Score)-Equivalence: Between any two items, the true score of one is equal to the true score of another plus some constant. Since the covariance of a random variable with a constant is zero, this implies that 
+  + Interitem covariance is the same between any two items.
+  + Item covariance is the same for all items.
+
+
+Alpha is only equal to reliability if and only if items are essentially tau-equivalent.
+
+"Like parallelism, essential τ -equivalence is not a realistic condition in test
+data, so that in real data we have that alpha < reliability." 
+
+Sijtsma, K. (2009). On the use, the misuse, and the very limited usefulness of Cronbach’s alpha. Psychometrika, 74(1), 107.
+
+## Greatest Lower Bound (GLB)
+
+```{r}
+covm <- cov(na.omit(items))
+```
+
+The GLB is called such as other methods provide smaller lower bounds to reliabilty. True reliability is between the lower bound and 1. The GLB is not only greater than or equal to alpha, but can be equal to reliability without essential tau-equivalence.
+
+Unfortunately the GLB can grossly overestimate reliabity where samples are smaller than 500 and test length exceeds 10 items. The GLB for How To Eat Items is `r round(psych::glb.algebraic(covm)$glb, 2)`.
+
+Oosterwijk, P. R., van der Ark, L. A., & Sijtsma, K. (2017). Overestimation of Reliability by Guttman’s œ4, œ5, and œ6 and the Greatest Lower Bound. Quantitative Psychology, 159.
+
+Formally, the GBL is the "smallest reliability possible given the observable covariance matrix (under the restriction that the sum of error variances is maximized for errors that correlate 0 with other variables)".

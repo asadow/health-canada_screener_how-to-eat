@@ -1,0 +1,107 @@
+---
+title: "Test sections"
+output:
+  html_document: 
+    toc: yes
+    toc_float: yes
+    df_print: kable
+    code_folding: hide
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 5
+    number_sections: yes
+    highlight: tango
+    fig_width: 12
+    fig_height: 12
+  word_document:
+    toc: yes
+    toc_depth: '5'
+header-includes: \usepackage{float} \floatplacement{figure}{H} \usepackage{longtable}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = T, 
+  comment = "#>",
+  results = "hide", 
+  message = FALSE,
+  warning = FALSE,
+  tidy.opts = list(width.cutoff=60)
+  )
+```
+## A function that generates sections
+
+```{r}
+library(ICCbin)
+library(irr)
+library(fs)
+library(gt)
+library(DT)
+library(GPArotation)
+library(Rcsdp)
+library(snakecase)
+library(here)
+library(tidyverse)
+library(vroom)
+library(janitor)
+library(glue)
+library(gtsummary)
+library(corrr)
+library(polycor)
+library(EFA.dimensions)
+library(EFAtools)
+library(evaluate)
+library(readxl)
+library(qualtRics)
+library(sjlabelled)
+library(gridExtra)
+library(reactable)
+library(kableExtra)
+
+```
+
+```{r}
+results <- read_rds(
+  here("results", "results.rds")
+  )
+# create_section <- function(x) {
+# 
+#    # Inserts "## Title (auto)"
+#    pander::pandoc.header(x, level = 3)
+# 
+#    # Section contents
+#    # e.g. a random plot
+#    plot(sample(1000, 10))
+# 
+#    # a list, formatted as Markdown
+#    # adding also empty lines, to be sure that this is valid Markdown
+#    pander::pandoc.p('')
+#    pander::pandoc.list(letters[1:3])
+#    pander::pandoc.p('')
+# }
+```
+
+#### Generate sections {.tabset .tabset-fade}
+
+```{r, results='asis'}
+n_sections <- 3
+library(kableExtra)
+
+for (i in seq(letters[1:3])) {
+   # Inserts "## Title (auto)"
+   pander::pandoc.header(letters[1:3][i], level = 5)
+
+   # Section contents
+   # e.g. a random plot
+
+   results$corr_matrix[[i]] %>% 
+     kbl() %>%
+        kable_styling(fixed_thead = T) %>% 
+     print
+
+   # a list, formatted as Markdown
+   # adding also empty lines, to be sure that this is valid Markdown
+   pander::pandoc.p('')
+   pander::pandoc.p('')
+}
+```
